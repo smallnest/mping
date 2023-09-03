@@ -29,28 +29,30 @@ func init() {
 	rand.New(rand.NewSource(time.Now().UnixNano()))
 	id = uint16(os.Getpid() & 0xffff)
 
-	for _, target := range strings.Split(srcAddr, ",") {
-		validTargets[target] = true
-	}
 }
 
 var connOnce sync.Once
 
 func start() error {
-	localIP, err := qianmo.HostFirstIPv4()
-	if err != nil {
-		return err
+	for _, target := range strings.Split(srcAddr, ",") {
+		validTargets[target] = true
 	}
-	iface, err := qianmo.InterfaceByIP(localIP)
+
+	addrs := qianmo.NonLoopbackAddrs()
+	if len(addrs) == 0 {
+		return errors.New("no non-loopback address")
+	}
+
+	iface, err := qianmo.InterfaceByIP(addrs[0])
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get interface by ip: %w", err)
 	}
 
 	conn, err := icmpx.ListenIPv4(iface, icmpx.IPv4Config{
 		Filter: icmpx.IPv4AllowOnly(ipv4.ICMPTypeEchoReply),
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to listen: %w", err)
 	}
 
 	go send(conn)
@@ -75,11 +77,10 @@ func send(conn *icmpx.IPv4Conn) {
 	copy(data, msgPrefix)
 	binary.LittleEndian.PutUint64(data[len(msgPrefix):], uint64(time.Now().UnixNano()))
 
-	_, err := rand.Read(data[len(msgPrefix):])
+	_, err := rand.Read(data[len(msgPrefix)+8:])
 	if err != nil {
 		panic(err)
 	}
-
 	for {
 		seq++
 		req := &icmp.Message{
@@ -87,7 +88,7 @@ func send(conn *icmpx.IPv4Conn) {
 			Body: &icmp.Echo{
 				ID:   int(id),
 				Seq:  int(seq),
-				Data: []byte{},
+				Data: data,
 			},
 		}
 
@@ -97,7 +98,6 @@ func send(conn *icmpx.IPv4Conn) {
 			defer cancel()
 
 			if err := conn.WriteTo(ctx, req, target); err != nil {
-				fmt.Println(err)
 				return
 			}
 
