@@ -56,6 +56,7 @@ func start() error {
 	}
 
 	go send(conn)
+	go printStat()
 
 	return read(conn)
 }
@@ -97,6 +98,13 @@ func send(conn *icmpx.IPv4Conn) {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			defer cancel()
 
+			ts := time.Now().UnixNano()
+			key := ts / int64(time.Second)
+			stat.Add(key, Result{
+				ts:     ts,
+				target: target.String(),
+				seq:    seq,
+			})
 			if err := conn.WriteTo(ctx, req, target); err != nil {
 				return
 			}
@@ -120,7 +128,8 @@ func read(conn *icmpx.IPv4Conn) error {
 			return err
 		}
 
-		if !validTargets[addr.String()] {
+		target := addr.String()
+		if !validTargets[target] {
 			continue
 		}
 
@@ -139,8 +148,51 @@ func read(conn *icmpx.IPv4Conn) error {
 			}
 
 			ts := int64(binary.LittleEndian.Uint64(pkt.Data[len(msgPrefix):]))
+			key := ts / int64(time.Second)
+			stat.Add(key, Result{
+				ts:       ts,
+				target:   target,
+				ttl:      time.Now().UnixNano() - ts,
+				received: true,
+				seq:      uint16(pkt.Seq),
+			})
 
-			fmt.Printf("%d bytes from %s: icmp_seq=%d ttl=%v\n", len(pkt.Data), addr, pkt.Seq, time.Now().Sub(time.Unix(0, ts)))
+			// fmt.Printf("%d bytes from %s: icmp_seq=%d ttl=%v\n", len(pkt.Data), addr, pkt.Seq, time.Now().Sub(time.Unix(0, ts)))
+		}
+	}
+}
+
+func printStat() {
+	for b := range stat.SlidedChan {
+		targetResult := make(map[string]*TargetResult)
+
+		for _, r := range b.SlideOut.Value {
+			target := r.target
+
+			tr := targetResult[target]
+			if tr == nil {
+				tr = &TargetResult{}
+				targetResult[target] = tr
+			}
+
+			tr.ttl += r.ttl
+
+			if r.received {
+				tr.received++
+			} else {
+				tr.sent++
+				fmt.Printf("%+v\n", tr)
+			}
+
+		}
+
+		for target, tr := range targetResult {
+			if tr.received == 0 {
+				fmt.Printf("%s: %d/%d, ttl: %v\n", target, tr.received, tr.sent, 0)
+			} else {
+				fmt.Printf("%s: %d/%d, ttl: %v\n", target, tr.received, tr.sent, time.Duration(tr.ttl/int64(tr.received)))
+			}
+
 		}
 	}
 }

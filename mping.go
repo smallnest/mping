@@ -4,6 +4,8 @@ import (
 	"flag"
 	"os"
 	"time"
+
+	"github.com/smallnest/exp/stat/win"
 )
 
 var (
@@ -17,6 +19,7 @@ var (
 var (
 	msgPrefix = []byte("smallnest")
 	srcAddr   string
+	stat      *win.Sliding[int64, Result]
 )
 
 func hasFlag(f string) bool {
@@ -42,6 +45,12 @@ func main() {
 
 	if *packetSize < len(msgPrefix)+8 {
 		*packetSize = len(msgPrefix) + 8
+	}
+
+	var err error
+	stat, err = win.NewChanSize[int64, Result](time.Second, time.Second, 5*time.Second, 100)
+	if err != nil {
+		panic(err)
 	}
 
 	if err := start(); err != nil {
