@@ -82,6 +82,8 @@ func send(conn *icmpx.IPv4Conn) {
 	if err != nil {
 		panic(err)
 	}
+
+	sentPackets := 0
 	for {
 		seq++
 		ts := time.Now().UnixNano()
@@ -111,7 +113,12 @@ func send(conn *icmpx.IPv4Conn) {
 			if err := conn.WriteTo(ctx, req, target); err != nil {
 				return
 			}
+		}
 
+		sentPackets++
+		if *count > 0 && sentPackets >= *count {
+			fmt.Printf("sent packets: %d\n", sentPackets)
+			return
 		}
 	}
 }
