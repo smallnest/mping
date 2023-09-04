@@ -15,12 +15,12 @@ type Result struct {
 	ts       int64
 	seq      uint16
 	target   string
-	ttl      int64
+	latency  int64
 	received bool
 }
 
 type TargetResult struct {
-	ttl      int64
+	latency  int64
 	loss     int
 	received int
 }

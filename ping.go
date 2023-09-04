@@ -164,7 +164,7 @@ func read(conn *icmpx.IPv4Conn) error {
 			stat.Add(key, &Result{
 				ts:       ts,
 				target:   target,
-				ttl:      time.Now().UnixNano() - ts,
+				latency:  time.Now().UnixNano() - ts,
 				received: true,
 				seq:      uint16(pkt.Seq),
 			})
@@ -210,7 +210,7 @@ func printStat() {
 					targetResult[target] = tr
 				}
 
-				tr.ttl += r.ttl
+				tr.latency += r.latency
 
 				if r.received {
 					tr.received++
@@ -236,9 +236,9 @@ func printStat() {
 				}
 
 				if tr.received == 0 {
-					log.Printf("%s: sent:%d, recv:%d, loss rate: %.2f%%, ttl: %v\n", target, total, tr.received, lossRate*100, 0)
+					log.Printf("%s: sent:%d, recv:%d, loss rate: %.2f%%, latency: %v\n", target, total, tr.received, lossRate*100, 0)
 				} else {
-					log.Printf("%s: sent:%d, recv:%d,  loss rate: %.2f%%, ttl: %v\n", target, total, tr.received, lossRate*100, time.Duration(tr.ttl/int64(tr.received)))
+					log.Printf("%s: sent:%d, recv:%d,  loss rate: %.2f%%, latency: %v\n", target, total, tr.received, lossRate*100, time.Duration(tr.latency/int64(tr.received)))
 				}
 
 			}
