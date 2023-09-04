@@ -10,7 +10,6 @@ import (
 	"math/rand"
 	"net/netip"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -33,7 +32,7 @@ func init() {
 var connOnce sync.Once
 
 func start() error {
-	for _, target := range strings.Split(srcAddr, ",") {
+	for _, target := range targetAddrs {
 		validTargets[target] = true
 	}
 
@@ -66,12 +65,6 @@ func send(conn *icmpx.IPv4Conn) {
 
 	limiter := ratelimit.New(*rate, ratelimit.Per(time.Second))
 
-	targets := strings.Split(srcAddr, ",")
-	var targetAddrs []netip.Addr
-	for _, target := range targets {
-		targetAddrs = append(targetAddrs, netip.MustParseAddr(target))
-	}
-
 	var seq uint16
 
 	data := make([]byte, *packetSize)
@@ -99,16 +92,15 @@ func send(conn *icmpx.IPv4Conn) {
 
 		limiter.Take()
 		for _, target := range targetAddrs {
-
 			key := ts / int64(time.Second)
 			stat.Add(key, &Result{
 				ts:     ts,
-				target: target.String(),
+				target: target,
 				seq:    seq,
 			})
 
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-			err := conn.WriteTo(ctx, req, target)
+			err := conn.WriteTo(ctx, req, netip.MustParseAddr(target))
 			cancel()
 			if err != nil {
 				return
