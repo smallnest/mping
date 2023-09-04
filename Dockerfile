@@ -1,16 +1,26 @@
-FROM golang:1.21 as build
+############################
+# STEP 1 build executable binary
+############################
+FROM golang:1.21 as builder
 
 workdir /work
 
 # If you encounter some issues when pulling modules, \
 # you can try to use GOPROXY, especially in China.
-# ENV GOPROXY=https://goproxy.cn
+ENV GOPROXY=https://goproxy.cn
 
 COPY . /work
 
-RUN go build -o mping .
+RUN CGO_ENABLED=0 go build -ldflags '-extldflags "-static"' -tags timetzdata -o mping .
 
-ENTRYPOINT ["/work/mping"]
+############################
+# STEP 2 build a small image
+############################
+FROM scratch
+# Copy our static executable.
+COPY --from=builder /work/mping /mping
+# Run the mping binary.
+ENTRYPOINT ["/mping"]
 
 # Usage:
 #
