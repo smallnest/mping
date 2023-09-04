@@ -4,6 +4,7 @@ import (
 	"flag"
 	"log"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -20,6 +21,11 @@ var (
 	msgPrefix = []byte("smallnest")
 	srcAddr   string
 	stat      *buckets
+)
+
+var (
+	done     = make(chan struct{})
+	doneOnce sync.Once
 )
 
 func hasFlag(f string) bool {

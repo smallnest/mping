@@ -6,10 +6,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"math/rand"
-	"net"
 	"net/netip"
 	"os"
 	"strings"
@@ -64,6 +62,7 @@ func start() error {
 
 func send(conn *icmpx.IPv4Conn) {
 	defer connOnce.Do(func() { conn.Close() })
+	defer doneOnce.Do(func() { close(done) })
 
 	limiter := ratelimit.New(*rate, ratelimit.Per(time.Second))
 
@@ -100,8 +99,6 @@ func send(conn *icmpx.IPv4Conn) {
 
 		limiter.Take()
 		for _, target := range targetAddrs {
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-			defer cancel()
 
 			key := ts / int64(time.Second)
 			stat.Add(key, &Result{
@@ -110,16 +107,21 @@ func send(conn *icmpx.IPv4Conn) {
 				seq:    seq,
 			})
 
-			if err := conn.WriteTo(ctx, req, target); err != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			err := conn.WriteTo(ctx, req, target)
+			cancel()
+			if err != nil {
 				return
 			}
 		}
 
 		sentPackets++
 		if *count > 0 && sentPackets >= *count {
+			time.Sleep(time.Second * time.Duration((*delay + 1)))
 			fmt.Printf("sent packets: %d\n", sentPackets)
 			return
 		}
+
 	}
 }
 
@@ -127,15 +129,15 @@ func read(conn *icmpx.IPv4Conn) error {
 	defer connOnce.Do(func() { conn.Close() })
 
 	for {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*time.Duration((*delay)))
 
 		msg, addr, err := conn.ReadFrom(ctx)
+		cancel()
 		if err != nil {
-			if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
-				return nil
-			}
-			return err
+			// if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
+			// 	return nil
+			// }
+			return nil
 		}
 
 		target := addr.String()
@@ -218,6 +220,12 @@ func printStat() {
 
 			}
 
+			// // drop the first bucket
+			// if first {
+			// 	first = false
+			// 	continue
+			// }
+
 			for target, tr := range targetResult {
 				total := tr.received + tr.loss
 				var lossRate float64
@@ -228,9 +236,9 @@ func printStat() {
 				}
 
 				if tr.received == 0 {
-					log.Printf("%s: sent:%d, recv:%d, loss rate: %.2f%%, ttl: %v\n", target, total, tr.loss, lossRate*100, 0)
+					log.Printf("%s: sent:%d, recv:%d, loss rate: %.2f%%, ttl: %v\n", target, total, tr.received, lossRate*100, 0)
 				} else {
-					log.Printf("%s: sent:%d, recv:%d,  loss rate: %.2f%%, ttl: %v\n", target, total, tr.loss, lossRate*100, time.Duration(tr.ttl/int64(tr.received)))
+					log.Printf("%s: sent:%d, recv:%d,  loss rate: %.2f%%, ttl: %v\n", target, total, tr.received, lossRate*100, time.Duration(tr.ttl/int64(tr.received)))
 				}
 
 			}
