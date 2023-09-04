@@ -18,9 +18,9 @@ var (
 )
 
 var (
-	msgPrefix = []byte("smallnest")
-	srcAddr   string
-	stat      *buckets
+	msgPrefix   = []byte("smallnest")
+	targetAddrs []string
+	stat        *buckets
 )
 
 var (
@@ -47,7 +47,11 @@ func main() {
 		return
 	}
 
-	srcAddr = args[0]
+	var err error
+	targetAddrs, err = convertAddrs(args[0])
+	if err != nil {
+		panic(err)
+	}
 
 	if *packetSize < len(msgPrefix)+8 {
 		*packetSize = len(msgPrefix) + 8
