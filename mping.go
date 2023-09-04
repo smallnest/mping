@@ -2,10 +2,9 @@ package main
 
 import (
 	"flag"
+	"log"
 	"os"
 	"time"
-
-	"github.com/smallnest/exp/stat/win"
 )
 
 var (
@@ -14,12 +13,13 @@ var (
 	packetSize = flag.Int("l", 64, "packet size")
 	timeout    = flag.Duration("t", time.Second, "timeout")
 	rate       = flag.Int("r", 100, "rate, 100 means 100 packets per second")
+	delay      = flag.Int("d", 3, "delay seconds")
 )
 
 var (
 	msgPrefix = []byte("smallnest")
 	srcAddr   string
-	stat      *win.Sliding[int64, Result]
+	stat      *buckets
 )
 
 func hasFlag(f string) bool {
@@ -47,11 +47,9 @@ func main() {
 		*packetSize = len(msgPrefix) + 8
 	}
 
-	var err error
-	stat, err = win.NewChanSize[int64, Result](time.Second, time.Second, 5*time.Second, 100)
-	if err != nil {
-		panic(err)
-	}
+	log.SetFlags(log.Ltime)
+
+	stat = NewBuckets()
 
 	if err := start(); err != nil {
 		panic(err)

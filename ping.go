@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"math/rand"
 	"net"
 	"net/netip"
@@ -76,7 +77,6 @@ func send(conn *icmpx.IPv4Conn) {
 
 	data := make([]byte, *packetSize)
 	copy(data, msgPrefix)
-	binary.LittleEndian.PutUint64(data[len(msgPrefix):], uint64(time.Now().UnixNano()))
 
 	_, err := rand.Read(data[len(msgPrefix)+8:])
 	if err != nil {
@@ -84,6 +84,9 @@ func send(conn *icmpx.IPv4Conn) {
 	}
 	for {
 		seq++
+		ts := time.Now().UnixNano()
+		binary.LittleEndian.PutUint64(data[len(msgPrefix):], uint64(ts))
+
 		req := &icmp.Message{
 			Type: ipv4.ICMPTypeEcho,
 			Body: &icmp.Echo{
@@ -98,13 +101,13 @@ func send(conn *icmpx.IPv4Conn) {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			defer cancel()
 
-			ts := time.Now().UnixNano()
 			key := ts / int64(time.Second)
-			stat.Add(key, Result{
+			stat.Add(key, &Result{
 				ts:     ts,
 				target: target.String(),
 				seq:    seq,
 			})
+
 			if err := conn.WriteTo(ctx, req, target); err != nil {
 				return
 			}
@@ -149,50 +152,83 @@ func read(conn *icmpx.IPv4Conn) error {
 
 			ts := int64(binary.LittleEndian.Uint64(pkt.Data[len(msgPrefix):]))
 			key := ts / int64(time.Second)
-			stat.Add(key, Result{
+			stat.Add(key, &Result{
 				ts:       ts,
 				target:   target,
 				ttl:      time.Now().UnixNano() - ts,
 				received: true,
 				seq:      uint16(pkt.Seq),
 			})
-
-			// fmt.Printf("%d bytes from %s: icmp_seq=%d ttl=%v\n", len(pkt.Data), addr, pkt.Seq, time.Now().Sub(time.Unix(0, ts)))
 		}
 	}
 }
 
 func printStat() {
-	for b := range stat.SlidedChan {
-		targetResult := make(map[string]*TargetResult)
+	delayInSeconds := int64(*delay) // 5s
+	ticker := time.NewTicker(time.Second)
+	var lastKey int64
 
-		for _, r := range b.SlideOut.Value {
-			target := r.target
-
-			tr := targetResult[target]
-			if tr == nil {
-				tr = &TargetResult{}
-				targetResult[target] = tr
-			}
-
-			tr.ttl += r.ttl
-
-			if r.received {
-				tr.received++
-			} else {
-				tr.sent++
-				fmt.Printf("%+v\n", tr)
-			}
-
+	for range ticker.C {
+	recheck:
+		bucket := stat.Last()
+		if bucket == nil {
+			continue
 		}
 
-		for target, tr := range targetResult {
-			if tr.received == 0 {
-				fmt.Printf("%s: %d/%d, ttl: %v\n", target, tr.received, tr.sent, 0)
-			} else {
-				fmt.Printf("%s: %d/%d, ttl: %v\n", target, tr.received, tr.sent, time.Duration(tr.ttl/int64(tr.received)))
+		// fmt.Println("lastKey:", lastKey, "bucket.Key:", bucket.Key)
+
+		if bucket.Key <= lastKey {
+			stat.Pop()
+			goto recheck
+		}
+
+		if bucket.Key <= time.Now().UnixNano()/int64(time.Second)-delayInSeconds {
+			pop := stat.Pop().(*Bucket)
+			if pop.Key < bucket.Key {
+				goto recheck
+			}
+
+			lastKey = pop.Key
+
+			targetResult := make(map[string]*TargetResult)
+
+			for _, r := range pop.Value {
+				target := r.target
+
+				tr := targetResult[target]
+				if tr == nil {
+					tr = &TargetResult{}
+					targetResult[target] = tr
+				}
+
+				tr.ttl += r.ttl
+
+				if r.received {
+					tr.received++
+				} else {
+					tr.loss++
+				}
+
+			}
+
+			for target, tr := range targetResult {
+				total := tr.received + tr.loss
+				var lossRate float64
+				if total == 0 {
+					lossRate = 0
+				} else {
+					lossRate = float64(tr.loss) / float64(total)
+				}
+
+				if tr.received == 0 {
+					log.Printf("%s: sent:%d, recv:%d, loss rate: %.2f%%, ttl: %v\n", target, total, tr.loss, lossRate*100, 0)
+				} else {
+					log.Printf("%s: sent:%d, recv:%d,  loss rate: %.2f%%, ttl: %v\n", target, total, tr.loss, lossRate*100, time.Duration(tr.ttl/int64(tr.received)))
+				}
+
 			}
 
 		}
 	}
+
 }
