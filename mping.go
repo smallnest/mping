@@ -3,17 +3,18 @@ package main
 import (
 	"flag"
 	"log"
-	"os"
 	"time"
+
+	"github.com/spf13/pflag"
 )
 
 var (
-	count      = flag.Int("c", 0, "count, 0 means non-setting")
-	tos        = flag.Int("z", 0, "tos, 0 means non-setting")
-	packetSize = flag.Int("l", 64, "packet size")
-	timeout    = flag.Duration("t", time.Second, "timeout")
-	rate       = flag.Int("r", 100, "rate, 100 means 100 packets per second")
-	delay      = flag.Int("d", 3, "delay seconds")
+	count      = pflag.IntP("count", "c", 0, "count, 0 means non-setting")
+	tos        = pflag.IntP("tos", "z", 0, "tos, 0 means non-setting")
+	packetSize = pflag.IntP("size", "s", 64, "packet size")
+	timeout    = pflag.DurationP("timeout", "t", time.Second, "timeout")
+	rate       = pflag.IntP("rate", "r", 100, "rate, 100 means 100 packets per second for each target")
+	delay      = pflag.IntP("delay", "d", 3, "delay seconds")
 )
 
 var (
@@ -22,20 +23,10 @@ var (
 	stat        *buckets
 )
 
-func hasFlag(f string) bool {
-	// 遍历命令行参数，检查是否存在 -t 参数
-	for _, arg := range os.Args {
-		if arg == f {
-			return true
-		}
-	}
-	return false
-}
-
 func main() {
-	flag.Parse()
+	pflag.Parse()
 
-	args := flag.Args()
+	args := pflag.Args()
 	if len(args) == 0 {
 		flag.Usage()
 		return

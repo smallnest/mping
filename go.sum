@@ -30,6 +30,8 @@ github.com/smallnest/exp v0.0.0-20230809022203-7f429133f041 h1:OeT61XX2IMRMFz0gm
 github.com/smallnest/exp v0.0.0-20230809022203-7f429133f041/go.mod h1:C/f+NS2/WUvo1kXK/6u1unQeuXF1LAUXhb+GXVPHu90=
 github.com/smallnest/qianmo v0.0.0-20230903064849-9a82fcd1edd5 h1:pY/nRY33nz4w9FK382A5FjfSji6t/oaAaE32HbqLtR0=
 github.com/smallnest/qianmo v0.0.0-20230903064849-9a82fcd1edd5/go.mod h1:ByovJIAzW5oOwXTN9LzGOPxpPb2iAXe7XxrntNzCT58=
+github.com/spf13/pflag v1.0.5 h1:iy+VFUOCP1a+8yFto/drg2CJ5u0yRoB7fZw3DKv/JXA=
+github.com/spf13/pflag v1.0.5/go.mod h1:McXfInJRrz4CZXVZOBLb0bTZqETkiAhM9Iw0y3An2Bg=
 github.com/stretchr/testify v1.8.4 h1:CcVxjf3Q8PM0mHUKJCdn+eZZtm5yQwehR5yeSVQQcUk=
 github.com/stretchr/testify v1.8.4/go.mod h1:sz/lmYIOXD/1dqDmKjjqLyZ2RngseejIcXlSw2iwfAo=
 github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e h1:JVG44RsyaB9T2KIHavMF/ppJZNG9ZpyihvCd0w101no=
