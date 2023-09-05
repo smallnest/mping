@@ -3,7 +3,7 @@ module github.com/smallnest/mping
 go 1.21.0
 
 require (
-	github.com/mdlayher/icmpx v0.0.0-20230831205133-9104e8502d6f
+	github.com/mdlayher/icmpx v0.0.0-20230904213334-626d638b9ae8
 	github.com/smallnest/exp v0.0.0-20230809022203-7f429133f041
 	github.com/smallnest/qianmo v0.0.0-20230903064849-9a82fcd1edd5
 	go.uber.org/ratelimit v0.3.0

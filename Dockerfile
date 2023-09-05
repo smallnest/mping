@@ -7,7 +7,7 @@ workdir /work
 
 # If you encounter some issues when pulling modules, \
 # you can try to use GOPROXY, especially in China.
-ENV GOPROXY=https://goproxy.cn
+# ENV GOPROXY=https://goproxy.cn
 
 COPY . /work
 

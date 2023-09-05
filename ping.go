@@ -53,6 +53,13 @@ func start() error {
 		return fmt.Errorf("failed to listen: %w", err)
 	}
 
+	if *tos > 0 {
+		err = conn.SetTOS(*tos)
+		if err != nil {
+			return fmt.Errorf("failed to set tos: %w", err)
+		}
+	}
+
 	go send(conn)
 	go printStat()
 
@@ -61,7 +68,6 @@ func start() error {
 
 func send(conn *icmpx.IPv4Conn) {
 	defer connOnce.Do(func() { conn.Close() })
-	defer doneOnce.Do(func() { close(done) })
 
 	limiter := ratelimit.New(*rate, ratelimit.Per(time.Second))
 

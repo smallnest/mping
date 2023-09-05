@@ -17,7 +17,7 @@ options usage.
 ```sh
 > $$ mping -h     
 
-Usage: mping [options] [host list]]
+Usage: mping [options] [host list]
 
   -c int
         count, 0 means non-setting
@@ -39,4 +39,9 @@ example
 sudo ./mping -r 5 8.8.8.8
 sudo ./mping -r 100 8.8.8.8,8.8.4.4
 sudo ./mping -r 100 github.com,bing.com
+```
+
+docker:
+```
+sudo docker run --rm smallnest/mping -it mping 8.8.8.8
 ```
