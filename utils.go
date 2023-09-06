@@ -24,9 +24,7 @@ func convertAddrs(_addrs string) ([]string, error) {
 		if err == nil && ipnet != nil {
 			for ip := ip.Mask(ipnet.Mask); ipnet.Contains(ip); increment(ip) {
 				dest = append(dest, ip.String())
-				continue
 			}
-
 			continue
 		}
 
