@@ -34,7 +34,7 @@ Usage: mping [options] [host list]
   -z int
         tos, 0 means non-setting
   --bitflip bool
-        check whether there are bit flipped
+        check whether there is bit flipped
 ```
 
 example
