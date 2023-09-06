@@ -20,6 +20,16 @@ func convertAddrs(_addrs string) ([]string, error) {
 			continue
 		}
 
+		ip, ipnet, err := net.ParseCIDR(addr)
+		if err == nil && ipnet != nil {
+			for ip := ip.Mask(ipnet.Mask); ipnet.Contains(ip); increment(ip) {
+				dest = append(dest, ip.String())
+				continue
+			}
+
+			continue
+		}
+
 		hosts, err := net.LookupHost(addr)
 		if err != nil {
 			return dest, err
@@ -36,4 +46,13 @@ func convertAddrs(_addrs string) ([]string, error) {
 	}
 
 	return dest, nil
+}
+
+func increment(ip net.IP) {
+	for j := len(ip) - 1; j >= 0; j-- {
+		ip[j]++
+		if ip[j] > 0 {
+			break
+		}
+	}
 }

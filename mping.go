@@ -26,6 +26,7 @@ var (
 
 func main() {
 	pflag.ErrHelp = errors.New("")
+	pflag.Parse()
 
 	args := pflag.Args()
 	if len(args) == 0 {
