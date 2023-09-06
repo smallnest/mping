@@ -19,7 +19,7 @@ options usage.
 ```sh
 > $$ mping -h     
 
-Usage: mping [options] [host list]
+Usage: mping [options] <host list>
 
   -c int
         count, 0 means non-setting

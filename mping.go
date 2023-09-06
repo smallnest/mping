@@ -1,7 +1,7 @@
 package main
 
 import (
-	"flag"
+	"errors"
 	"log"
 	"time"
 
@@ -25,11 +25,11 @@ var (
 )
 
 func main() {
-	pflag.Parse()
+	pflag.ErrHelp = errors.New("")
 
 	args := pflag.Args()
 	if len(args) == 0 {
-		flag.Usage()
+		pflag.Usage()
 		return
 	}
 
