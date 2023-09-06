@@ -1,10 +1,12 @@
 # mping
+![GitHub](https://img.shields.io/github/license/smallnest/mping) ![GitHub Action](https://github.com/smallnest/mping/actions/workflows/action.yaml/badge.svg) [![Go Report Card](https://goreportcard.com/badge/github.com/smallnest/mping)](https://goreportcard.com/report/github.com/smallnest/mping)  [![GoDoc](https://godoc.org/github.com/smallnest/mping?status.png)](http://godoc.org/github.com/smallnest/mping)  
+
 a multi-targets ping tool, which supports 10,000 packets/second
 
 > 一个高频ping工具，支持多个目标。
 > 正常的ping一般用来做探测工具，mping还可以用来做压测工具。
 
-## 使用
+## Usage
 
 compile
 
@@ -31,6 +33,8 @@ Usage: mping [options] [host list]
         timeout (default 1s)
   -z int
         tos, 0 means non-setting
+  --bitflip bool
+        check whether there are bit flipped
 ```
 
 example

@@ -17,12 +17,14 @@ type Result struct {
 	target   string
 	latency  int64
 	received bool
+	bitflip  bool
 }
 
 type TargetResult struct {
-	latency  int64
-	loss     int
-	received int
+	latency      int64
+	loss         int
+	received     int
+	bitflipCount int
 }
 
 type buckets struct {

@@ -66,6 +66,8 @@ func start() error {
 	return read(conn)
 }
 
+var payload []byte
+
 func send(conn *icmpx.IPv4Conn) {
 	defer connOnce.Do(func() { conn.Close() })
 
@@ -80,6 +82,8 @@ func send(conn *icmpx.IPv4Conn) {
 	if err != nil {
 		panic(err)
 	}
+
+	payload = data[len(msgPrefix)+8:]
 
 	sentPackets := 0
 	for {
@@ -159,12 +163,18 @@ func read(conn *icmpx.IPv4Conn) error {
 
 			ts := int64(binary.LittleEndian.Uint64(pkt.Data[len(msgPrefix):]))
 			key := ts / int64(time.Second)
+
+			bitflip := false
+			if *bitflipCheck {
+				bitflip = !bytes.Equal(pkt.Data[len(msgPrefix)+8:], payload)
+			}
 			stat.Add(key, &Result{
 				ts:       ts,
 				target:   target,
 				latency:  time.Now().UnixNano() - ts,
 				received: true,
 				seq:      uint16(pkt.Seq),
+				bitflip:  bitflip,
 			})
 		}
 	}
@@ -216,6 +226,10 @@ func printStat() {
 					tr.loss++
 				}
 
+				if *bitflipCheck && r.bitflip {
+					tr.bitflipCount++
+				}
+
 			}
 
 			// // drop the first bucket
@@ -233,12 +247,20 @@ func printStat() {
 					lossRate = float64(tr.loss) / float64(total)
 				}
 
-				if tr.received == 0 {
-					log.Printf("%s: sent:%d, recv:%d, loss rate: %.2f%%, latency: %v\n", target, total, tr.received, lossRate*100, 0)
+				if *bitflipCheck {
+					if tr.received == 0 {
+						log.Printf("%s: sent:%d, recv:%d, loss rate: %.2f%%, latency: %v, bitflip: %d\n", target, total, tr.received, lossRate*100, 0, tr.bitflipCount)
+					} else {
+						log.Printf("%s: sent:%d, recv:%d,  loss rate: %.2f%%, latency: %v, bitflip: %d\n", target, total, tr.received, lossRate*100, time.Duration(tr.latency/int64(tr.received)), tr.bitflipCount)
+					}
 				} else {
-					log.Printf("%s: sent:%d, recv:%d,  loss rate: %.2f%%, latency: %v\n", target, total, tr.received, lossRate*100, time.Duration(tr.latency/int64(tr.received)))
-				}
 
+					if tr.received == 0 {
+						log.Printf("%s: sent:%d, recv:%d, loss rate: %.2f%%, latency: %v\n", target, total, tr.received, lossRate*100, 0)
+					} else {
+						log.Printf("%s: sent:%d, recv:%d,  loss rate: %.2f%%, latency: %v\n", target, total, tr.received, lossRate*100, time.Duration(tr.latency/int64(tr.received)))
+					}
+				}
 			}
 
 		}
