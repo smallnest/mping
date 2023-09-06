@@ -41,11 +41,11 @@ example
 
 ```sh
 sudo ./mping -r 5 8.8.8.8
-sudo ./mping -r 100 8.8.8.8,8.8.4.4
+sudo ./mping -r 100 8.8.8.8/30,8.8.4.4,github.com
 sudo ./mping -r 100 github.com,bing.com
 ```
 
 docker:
 ```
-sudo docker run --rm smallnest/mping -it mping 8.8.8.8
+sudo docker run --rm -it smallnest/mping 8.8.8.8
 ```

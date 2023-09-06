@@ -28,5 +28,5 @@ ENTRYPOINT ["/mping"]
 # docker build -t mping .
 #
 # print help
-# docker run --rm --name mping -it mping -h
-# docker run --rm --name mping -it mping 8.8.8.8
+# docker run --rm -it --name mping -h
+# docker run --rm -it --name mping 8.8.8.8
