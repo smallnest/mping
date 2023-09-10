@@ -109,7 +109,7 @@ func send(conn *icmpx.IPv4Conn) {
 				seq:    seq,
 			})
 
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 			err := conn.WriteTo(ctx, req, netip.MustParseAddr(target))
 			cancel()
 			if err != nil {
