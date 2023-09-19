@@ -12,7 +12,8 @@ var (
 )
 
 type Result struct {
-	ts       int64
+	txts     int64
+	rxts     int64
 	seq      uint16
 	target   string
 	latency  int64
@@ -73,6 +74,22 @@ func (h *buckets) Add(k int64, v *Result) error {
 	return nil
 }
 
+// AddReply adds a reply to the bucket.
+func (h *buckets) AddReply(k int64, v *Result) error {
+	h.mu.Lock()
+	bucket := h.m[k]
+	if bucket == nil {
+		bucket = &Bucket{Key: k, Value: make(map[string]*Result)}
+		h.m[k] = bucket
+		heap.Push(&h.bs, bucket)
+	}
+	h.mu.Unlock()
+
+	bucket.AddReply(v)
+
+	return nil
+}
+
 // Pop returns the bucket for the key.
 func (h *buckets) Pop() any {
 	h.mu.Lock()
@@ -118,6 +135,20 @@ type Bucket struct {
 func (b *Bucket) Add(v *Result) {
 	b.Mu.Lock()
 	b.Value[fmt.Sprintf("%s-%d", v.target, v.seq)] = v
+	b.Mu.Unlock()
+}
+
+// AddReply adds a reply to the bucket.
+func (b *Bucket) AddReply(v *Result) {
+	key := fmt.Sprintf("%s-%d", v.target, v.seq)
+	b.Mu.Lock()
+	req := b.Value[key]
+	if req == nil {
+		b.Value[key] = v
+	} else {
+		v.latency = v.rxts - req.txts
+	}
+
 	b.Mu.Unlock()
 }
 

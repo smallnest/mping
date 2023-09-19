@@ -2,22 +2,22 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"log"
 	"math/rand"
-	"net/netip"
+	"net"
 	"os"
+	"strings"
 	"sync"
+	"syscall"
 	"time"
 
-	"github.com/mdlayher/icmpx"
-	"github.com/smallnest/qianmo"
 	"go.uber.org/ratelimit"
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
+	"golang.org/x/sys/unix"
 )
 
 var id uint16
@@ -36,25 +36,14 @@ func start() error {
 		validTargets[target] = true
 	}
 
-	addrs := qianmo.NonLoopbackAddrs()
-	if len(addrs) == 0 {
-		return errors.New("no non-loopback address")
-	}
-
-	iface, err := qianmo.InterfaceByIP(addrs[0])
-	if err != nil {
-		return fmt.Errorf("failed to get interface by ip: %w", err)
-	}
-
-	conn, err := icmpx.ListenIPv4(iface, icmpx.IPv4Config{
-		Filter: icmpx.IPv4AllowOnly(ipv4.ICMPTypeEchoReply),
-	})
+	conn, err := openConn()
 	if err != nil {
 		return fmt.Errorf("failed to listen: %w", err)
 	}
 
 	if *tos > 0 {
-		err = conn.SetTOS(*tos)
+		pconn := ipv4.NewConn(conn)
+		err = pconn.SetTOS(*tos)
 		if err != nil {
 			return fmt.Errorf("failed to set tos: %w", err)
 		}
@@ -66,10 +55,46 @@ func start() error {
 	return read(conn)
 }
 
+func openConn() (*net.IPConn, error) {
+	conn, err := net.ListenPacket("ip4:icmp", "0.0.0.0")
+	if err != nil {
+		return nil, err
+	}
+
+	ipconn := conn.(*net.IPConn)
+	f, err := ipconn.File()
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	fd := int(f.Fd())
+	flags := unix.SOF_TIMESTAMPING_SOFTWARE | unix.SOF_TIMESTAMPING_RX_SOFTWARE | unix.SOF_TIMESTAMPING_TX_SOFTWARE |
+		unix.SOF_TIMESTAMPING_OPT_CMSG | unix.SOF_TIMESTAMPING_OPT_TSONLY
+	if err := syscall.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_TIMESTAMPING, flags); err != nil {
+		return nil, err
+	}
+	timeout := syscall.Timeval{Sec: 1, Usec: 0}
+	if err := syscall.SetsockoptTimeval(fd, unix.SOL_SOCKET, unix.SO_RCVTIMEO, &timeout); err != nil {
+		return nil, err
+	}
+	if err := syscall.SetsockoptTimeval(fd, unix.SOL_SOCKET, unix.SO_SNDTIMEO, &timeout); err != nil {
+		return nil, err
+	}
+
+	return ipconn, nil
+}
+
 var payload []byte
 
-func send(conn *icmpx.IPv4Conn) {
+func send(conn *net.IPConn) {
 	defer connOnce.Do(func() { conn.Close() })
+	f, err := conn.File()
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	fd := int(f.Fd())
 
 	limiter := ratelimit.New(*rate, ratelimit.Per(time.Second))
 
@@ -78,43 +103,62 @@ func send(conn *icmpx.IPv4Conn) {
 	data := make([]byte, *packetSize)
 	copy(data, msgPrefix)
 
-	_, err := rand.Read(data[len(msgPrefix)+8:])
+	_, err = rand.Read(data[len(msgPrefix)+8:])
 	if err != nil {
 		panic(err)
 	}
 
 	payload = data[len(msgPrefix)+8:]
 
+	targets := make([]*net.IPAddr, 0, len(targetAddrs))
+	for _, taget := range targetAddrs {
+		targets = append(targets, &net.IPAddr{IP: net.ParseIP(taget)})
+	}
+
 	sentPackets := 0
 	for {
 		seq++
-		ts := time.Now().UnixNano()
-		binary.LittleEndian.PutUint64(data[len(msgPrefix):], uint64(ts))
-
-		req := &icmp.Message{
-			Type: ipv4.ICMPTypeEcho,
-			Body: &icmp.Echo{
-				ID:   int(id),
-				Seq:  int(seq),
-				Data: data,
-			},
-		}
 
 		limiter.Take()
-		for _, target := range targetAddrs {
-			key := ts / int64(time.Second)
-			stat.Add(key, &Result{
-				ts:     ts,
-				target: target,
-				seq:    seq,
-			})
+		for _, target := range targets {
+			ts := time.Now().UnixNano()
+			binary.LittleEndian.PutUint64(data[len(msgPrefix):], uint64(ts))
 
-			ctx, cancel := context.WithTimeout(context.Background(), *timeout)
-			err := conn.WriteTo(ctx, req, netip.MustParseAddr(target))
-			cancel()
+			req := &icmp.Message{
+				Type: ipv4.ICMPTypeEcho,
+				Body: &icmp.Echo{
+					ID:   int(id),
+					Seq:  int(seq),
+					Data: data,
+				},
+			}
+
+			key := ts / int64(time.Second)
+
+			data, err := req.Marshal(nil)
+			if err != nil {
+				continue
+			}
+			_, err = conn.WriteTo(data, target)
 			if err != nil {
 				return
 			}
+
+			rs := &Result{
+				txts:   ts,
+				target: target.IP.String(),
+				seq:    seq,
+			}
+			if txts, err := getTxTs(fd); err != nil {
+				if strings.HasPrefix(err.Error(), "resource temporarily unavailable") {
+					continue
+				}
+				fmt.Printf("failed to get TX timestamp: %s", err)
+				rs.txts = txts
+			}
+
+			stat.Add(key, rs)
+
 		}
 
 		sentPackets++
@@ -127,23 +171,46 @@ func send(conn *icmpx.IPv4Conn) {
 	}
 }
 
-func read(conn *icmpx.IPv4Conn) error {
+func read(conn *net.IPConn) error {
 	defer connOnce.Do(func() { conn.Close() })
 
-	for {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second*time.Duration((*delay)))
+	pktBuf := make([]byte, 1500)
+	oob := make([]byte, 1500)
 
-		msg, addr, err := conn.ReadFrom(ctx)
-		cancel()
+	for {
+
+		_ = conn.SetReadDeadline(time.Now().Add(10 * time.Millisecond))
+		n, oobn, _, ra, err := conn.ReadMsgIP(pktBuf, oob)
+
 		if err != nil {
-			// if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
-			// 	return nil
-			// }
-			return nil
+			if neterr, ok := err.(*net.OpError); ok && neterr.Timeout() {
+				return nil
+			}
+			if strings.Contains(err.Error(), "no message of desired type") {
+				return nil
+			}
+			return err
 		}
 
-		target := addr.String()
+		var rxts int64
+		if rxts, err = getTsFromOOB(oob, oobn); err != nil {
+			return fmt.Errorf("failed to get RX timestamp: %s", err)
+		}
+
+		if n < ipv4.HeaderLen {
+			return errors.New("malformed IPv4 packet")
+		}
+
+		target := ra.String()
 		if !validTargets[target] {
+			continue
+		}
+
+		msg, err := icmp.ParseMessage(1, pktBuf[ipv4.HeaderLen:])
+		if err != nil {
+			continue
+		}
+		if msg.Type != ipv4.ICMPTypeEchoReply {
 			continue
 		}
 
@@ -161,17 +228,19 @@ func read(conn *icmpx.IPv4Conn) error {
 				continue
 			}
 
-			ts := int64(binary.LittleEndian.Uint64(pkt.Data[len(msgPrefix):]))
-			key := ts / int64(time.Second)
+			txts := int64(binary.LittleEndian.Uint64(pkt.Data[len(msgPrefix):]))
+			key := txts / int64(time.Second)
 
 			bitflip := false
 			if *bitflipCheck {
 				bitflip = !bytes.Equal(pkt.Data[len(msgPrefix)+8:], payload)
 			}
+
 			stat.Add(key, &Result{
-				ts:       ts,
+				txts:     txts,
+				rxts:     rxts,
 				target:   target,
-				latency:  time.Now().UnixNano() - ts,
+				latency:  time.Now().UnixNano() - txts,
 				received: true,
 				seq:      uint16(pkt.Seq),
 				bitflip:  bitflip,
@@ -232,12 +301,6 @@ func printStat() {
 
 			}
 
-			// // drop the first bucket
-			// if first {
-			// 	first = false
-			// 	continue
-			// }
-
 			for target, tr := range targetResult {
 				total := tr.received + tr.loss
 				var lossRate float64
@@ -266,4 +329,31 @@ func printStat() {
 		}
 	}
 
+}
+
+func getTsFromOOB(oob []byte, oobn int) (int64, error) {
+	cms, err := syscall.ParseSocketControlMessage(oob[:oobn])
+	if err != nil {
+		return 0, err
+	}
+	for _, cm := range cms {
+		if cm.Header.Level == syscall.SOL_SOCKET || cm.Header.Type == syscall.SO_TIMESTAMPING {
+			var t unix.ScmTimestamping
+			if err := binary.Read(bytes.NewBuffer(cm.Data), binary.LittleEndian, &t); err != nil {
+				return 0, err
+			}
+			return t.Ts[0].Nano(), nil
+		}
+	}
+	return 0, fmt.Errorf("no timestamp found")
+}
+
+func getTxTs(socketFd int) (int64, error) {
+	pktBuf := make([]byte, 1024)
+	oob := make([]byte, 1024)
+	_, oobn, _, _, err := syscall.Recvmsg(socketFd, pktBuf, oob, syscall.MSG_ERRQUEUE)
+	if err != nil {
+		return 0, err
+	}
+	return getTsFromOOB(oob, oobn)
 }
