@@ -22,6 +22,7 @@ import (
 
 var id uint16
 var validTargets = make(map[string]bool)
+var supportTimestamping = true
 
 func init() {
 	rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -72,7 +73,8 @@ func openConn() (*net.IPConn, error) {
 	flags := unix.SOF_TIMESTAMPING_SOFTWARE | unix.SOF_TIMESTAMPING_RX_SOFTWARE | unix.SOF_TIMESTAMPING_TX_SOFTWARE |
 		unix.SOF_TIMESTAMPING_OPT_CMSG | unix.SOF_TIMESTAMPING_OPT_TSONLY
 	if err := syscall.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_TIMESTAMPING, flags); err != nil {
-		return nil, err
+		supportTimestamping = false
+		return ipconn, nil
 	}
 	timeout := syscall.Timeval{Sec: 1, Usec: 0}
 	if err := syscall.SetsockoptTimeval(fd, unix.SOL_SOCKET, unix.SO_RCVTIMEO, &timeout); err != nil {
@@ -149,12 +151,15 @@ func send(conn *net.IPConn) {
 				target: target.IP.String(),
 				seq:    seq,
 			}
-			if txts, err := getTxTs(fd); err != nil {
-				if strings.HasPrefix(err.Error(), "resource temporarily unavailable") {
-					continue
+
+			if supportTimestamping {
+				if txts, err := getTxTs(fd); err != nil {
+					if strings.HasPrefix(err.Error(), "resource temporarily unavailable") {
+						continue
+					}
+					fmt.Printf("failed to get TX timestamp: %s", err)
+					rs.txts = txts
 				}
-				fmt.Printf("failed to get TX timestamp: %s", err)
-				rs.txts = txts
 			}
 
 			stat.Add(key, rs)
@@ -193,8 +198,12 @@ func read(conn *net.IPConn) error {
 		}
 
 		var rxts int64
-		if rxts, err = getTsFromOOB(oob, oobn); err != nil {
-			return fmt.Errorf("failed to get RX timestamp: %s", err)
+		if supportTimestamping {
+			if rxts, err = getTsFromOOB(oob, oobn); err != nil {
+				return fmt.Errorf("failed to get RX timestamp: %s", err)
+			}
+		} else {
+			rxts = time.Now().UnixNano()
 		}
 
 		if n < ipv4.HeaderLen {
@@ -236,7 +245,7 @@ func read(conn *net.IPConn) error {
 				bitflip = !bytes.Equal(pkt.Data[len(msgPrefix)+8:], payload)
 			}
 
-			stat.Add(key, &Result{
+			stat.AddReply(key, &Result{
 				txts:     txts,
 				rxts:     rxts,
 				target:   target,

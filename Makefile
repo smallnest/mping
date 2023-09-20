@@ -1,10 +1,10 @@
 .PHONY: build docker test
 
 build:
-	@go build -o mping .
+	GO_ENABLED=0 go build -ldflags '-extldflags "-static"' -tags timetzdata -o mping .
 
 docker:
-	@docker build -t mping .
+	docker build -t mping .
 
 test:
-	@go test -v ./...
+	go test -v ./...

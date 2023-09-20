@@ -147,6 +147,7 @@ func (b *Bucket) AddReply(v *Result) {
 		b.Value[key] = v
 	} else {
 		v.latency = v.rxts - req.txts
+		b.Value[key] = v
 	}
 
 	b.Mu.Unlock()
