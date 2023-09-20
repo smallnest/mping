@@ -22,7 +22,8 @@ import (
 
 var id uint16
 var validTargets = make(map[string]bool)
-var supportTimestamping = true
+var supportTxTimestamping = true
+var supportRxTimestamping = true
 
 func init() {
 	rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -90,7 +91,12 @@ func openConn() (*net.IPConn, error) {
 		unix.SOF_TIMESTAMPING_TX_HARDWARE | unix.SOF_TIMESTAMPING_TX_SOFTWARE |
 		unix.SOF_TIMESTAMPING_OPT_CMSG | unix.SOF_TIMESTAMPING_OPT_TSONLY
 	if err := syscall.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_TIMESTAMPING, flags); err != nil {
-		supportTimestamping = false
+		supportTxTimestamping = false
+		supportRxTimestamping = false
+		if err := syscall.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_TIMESTAMPNS, 1); err == nil {
+			supportRxTimestamping = true
+		}
+
 		return ipconn, nil
 	}
 	timeout := syscall.Timeval{Sec: 1, Usec: 0}
@@ -169,7 +175,7 @@ func send(conn *net.IPConn) error {
 				seq:    seq,
 			}
 
-			if supportTimestamping {
+			if supportTxTimestamping {
 				if txts, err := getTxTs(fd); err != nil {
 					if strings.HasPrefix(err.Error(), "resource temporarily unavailable") {
 						continue
@@ -205,7 +211,6 @@ func read(conn *net.IPConn) error {
 	oob := make([]byte, 1500)
 
 	for {
-
 		_ = conn.SetReadDeadline(time.Now().Add(10 * time.Millisecond))
 		n, oobn, _, ra, err := conn.ReadMsgIP(pktBuf, oob)
 
@@ -220,7 +225,7 @@ func read(conn *net.IPConn) error {
 		}
 
 		var rxts int64
-		if supportTimestamping {
+		if supportRxTimestamping {
 			if rxts, err = getTsFromOOB(oob, oobn); err != nil {
 				return fmt.Errorf("failed to get RX timestamp: %s", err)
 			}
@@ -369,12 +374,20 @@ func getTsFromOOB(oob []byte, oobn int) (int64, error) {
 		return 0, err
 	}
 	for _, cm := range cms {
-		if cm.Header.Level == syscall.SOL_SOCKET || cm.Header.Type == syscall.SO_TIMESTAMPING {
+		if cm.Header.Level == syscall.SOL_SOCKET && cm.Header.Type == syscall.SO_TIMESTAMPING {
 			var t unix.ScmTimestamping
 			if err := binary.Read(bytes.NewBuffer(cm.Data), binary.LittleEndian, &t); err != nil {
 				return 0, err
 			}
 			return t.Ts[0].Nano(), nil
+		}
+
+		if cm.Header.Level == syscall.SOL_SOCKET && cm.Header.Type == syscall.SCM_TIMESTAMPNS {
+			var t unix.Timespec
+			if err := binary.Read(bytes.NewBuffer(cm.Data), binary.LittleEndian, &t); err != nil {
+				return 0, err
+			}
+			return t.Nano(), nil
 		}
 	}
 	return 0, fmt.Errorf("no timestamp found")

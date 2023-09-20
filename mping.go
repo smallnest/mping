@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"log"
 	"os"
 	"time"
@@ -51,7 +50,6 @@ func main() {
 	stat = NewBuckets()
 
 	if err := start(); err != nil {
-		fmt.Println(err)
 		os.Exit(-1)
 	}
 }
