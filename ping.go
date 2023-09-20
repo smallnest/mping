@@ -37,7 +37,11 @@ func start() error {
 		validTargets[target] = true
 	}
 
-	conn, err := openConn()
+	if len(targetAddrs) == 0 {
+		return errors.New("no target")
+	}
+
+	conn, err := openConn(targetAddrs[0])
 	if err != nil {
 		return fmt.Errorf("failed to listen: %w", err)
 	}
@@ -56,8 +60,15 @@ func start() error {
 	return read(conn)
 }
 
-func openConn() (*net.IPConn, error) {
-	conn, err := net.ListenPacket("ip4:icmp", "0.0.0.0")
+func openConn(target string) (*net.IPConn, error) {
+	var local = "0.0.0.0"
+	cn, _ := net.DialTimeout("udp4", target, 100*time.Millisecond)
+	if cn != nil {
+		local = cn.LocalAddr().(*net.UDPAddr).IP.String()
+		cn.Close()
+	}
+
+	conn, err := net.ListenPacket("ip4:icmp", local)
 	if err != nil {
 		return nil, err
 	}
