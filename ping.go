@@ -41,7 +41,7 @@ func start() error {
 		return errors.New("no target")
 	}
 
-	conn, err := openConn(targetAddrs[0])
+	conn, err := openConn()
 	if err != nil {
 		return fmt.Errorf("failed to listen: %w", err)
 	}
@@ -54,21 +54,26 @@ func start() error {
 		}
 	}
 
-	go send(conn)
-	go printStat()
+	done := make(chan error, 3)
+	go func() {
+		err := send(conn)
+		done <- err
+	}()
 
-	return read(conn)
+	go func() {
+		err := printStat()
+		done <- err
+	}()
+	go func() {
+		read(conn)
+		done <- err
+	}()
+
+	return <-done
 }
 
-func openConn(target string) (*net.IPConn, error) {
-	var local = "0.0.0.0"
-	cn, _ := net.DialTimeout("udp4", target, 100*time.Millisecond)
-	if cn != nil {
-		local = cn.LocalAddr().(*net.UDPAddr).IP.String()
-		cn.Close()
-	}
-
-	conn, err := net.ListenPacket("ip4:icmp", local)
+func openConn() (*net.IPConn, error) {
+	conn, err := net.ListenPacket("ip4:icmp", "0.0.0.0")
 	if err != nil {
 		return nil, err
 	}
@@ -101,11 +106,11 @@ func openConn(target string) (*net.IPConn, error) {
 
 var payload []byte
 
-func send(conn *net.IPConn) {
+func send(conn *net.IPConn) error {
 	defer connOnce.Do(func() { conn.Close() })
 	f, err := conn.File()
 	if err != nil {
-		return
+		return err
 	}
 	defer f.Close()
 	fd := int(f.Fd())
@@ -119,7 +124,7 @@ func send(conn *net.IPConn) {
 
 	_, err = rand.Read(data[len(msgPrefix)+8:])
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	payload = data[len(msgPrefix)+8:]
@@ -155,7 +160,7 @@ func send(conn *net.IPConn) {
 			}
 			_, err = conn.WriteTo(data, target)
 			if err != nil {
-				return
+				return err
 			}
 
 			rs := &Result{
@@ -182,13 +187,18 @@ func send(conn *net.IPConn) {
 		if *count > 0 && sentPackets >= *count {
 			time.Sleep(time.Second * time.Duration((*delay + 1)))
 			fmt.Printf("sent packets: %d\n", sentPackets)
-			return
+			return nil
 		}
 
 	}
 }
 
 func read(conn *net.IPConn) error {
+	defer func() {
+		if err := recover(); err != nil {
+			// fmt.Println(err)
+		}
+	}()
 	defer connOnce.Do(func() { conn.Close() })
 
 	pktBuf := make([]byte, 1500)
@@ -270,7 +280,7 @@ func read(conn *net.IPConn) error {
 	}
 }
 
-func printStat() {
+func printStat() error {
 	delayInSeconds := int64(*delay) // 5s
 	ticker := time.NewTicker(time.Second)
 	var lastKey int64
@@ -350,6 +360,7 @@ func printStat() {
 		}
 	}
 
+	return nil
 }
 
 func getTsFromOOB(oob []byte, oobn int) (int64, error) {

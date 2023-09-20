@@ -2,7 +2,9 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/spf13/pflag"
@@ -49,6 +51,7 @@ func main() {
 	stat = NewBuckets()
 
 	if err := start(); err != nil {
-		panic(err)
+		fmt.Println(err)
+		os.Exit(-1)
 	}
 }
