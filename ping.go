@@ -20,6 +20,11 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+var (
+	// ErrStampNotFund is returned when timestamp not found
+	ErrStampNotFund = errors.New("timestamp not found")
+)
+
 var id uint16
 var validTargets = make(map[string]bool)
 var supportTxTimestamping = true
@@ -87,7 +92,9 @@ func openConn() (*net.IPConn, error) {
 	defer f.Close()
 
 	fd := int(f.Fd())
-	flags := unix.SOF_TIMESTAMPING_RAW_HARDWARE | unix.SOF_TIMESTAMPING_SOFTWARE | unix.SOF_TIMESTAMPING_RX_HARDWARE | unix.SOF_TIMESTAMPING_RX_SOFTWARE |
+	// https://patchwork.ozlabs.org/project/netdev/patch/1226415412.31699.2.camel@ecld0pohly/
+	// https://www.kernel.org/doc/Documentation/networking/timestamping.txt
+	flags := unix.SOF_TIMESTAMPING_SYS_HARDWARE | unix.SOF_TIMESTAMPING_RAW_HARDWARE | unix.SOF_TIMESTAMPING_SOFTWARE | unix.SOF_TIMESTAMPING_RX_HARDWARE | unix.SOF_TIMESTAMPING_RX_SOFTWARE |
 		unix.SOF_TIMESTAMPING_TX_HARDWARE | unix.SOF_TIMESTAMPING_TX_SOFTWARE |
 		unix.SOF_TIMESTAMPING_OPT_CMSG | unix.SOF_TIMESTAMPING_OPT_TSONLY
 	if err := syscall.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_TIMESTAMPING, flags); err != nil {
@@ -379,7 +386,14 @@ func getTsFromOOB(oob []byte, oobn int) (int64, error) {
 			if err := binary.Read(bytes.NewBuffer(cm.Data), binary.LittleEndian, &t); err != nil {
 				return 0, err
 			}
-			return t.Ts[0].Nano(), nil
+
+			for i := 0; i < len(t.Ts); i++ {
+				if t.Ts[i].Nano() > 0 {
+					return t.Ts[i].Nano(), nil
+				}
+			}
+
+			return 0, ErrStampNotFund
 		}
 
 		if cm.Header.Level == syscall.SOL_SOCKET && cm.Header.Type == syscall.SCM_TIMESTAMPNS {
@@ -390,7 +404,7 @@ func getTsFromOOB(oob []byte, oobn int) (int64, error) {
 			return t.Nano(), nil
 		}
 	}
-	return 0, fmt.Errorf("no timestamp found")
+	return 0, ErrStampNotFund
 }
 
 func getTxTs(socketFd int) (int64, error) {
