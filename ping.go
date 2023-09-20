@@ -70,7 +70,8 @@ func openConn() (*net.IPConn, error) {
 	defer f.Close()
 
 	fd := int(f.Fd())
-	flags := unix.SOF_TIMESTAMPING_SOFTWARE | unix.SOF_TIMESTAMPING_RX_SOFTWARE | unix.SOF_TIMESTAMPING_TX_SOFTWARE |
+	flags := unix.SOF_TIMESTAMPING_RAW_HARDWARE | unix.SOF_TIMESTAMPING_SOFTWARE | unix.SOF_TIMESTAMPING_RX_HARDWARE | unix.SOF_TIMESTAMPING_RX_SOFTWARE |
+		unix.SOF_TIMESTAMPING_TX_HARDWARE | unix.SOF_TIMESTAMPING_TX_SOFTWARE |
 		unix.SOF_TIMESTAMPING_OPT_CMSG | unix.SOF_TIMESTAMPING_OPT_TSONLY
 	if err := syscall.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_TIMESTAMPING, flags); err != nil {
 		supportTimestamping = false
