@@ -207,11 +207,11 @@ func send(conn *net.IPConn) error {
 }
 
 func read(conn *net.IPConn) error {
-	defer func() {
-		if err := recover(); err != nil {
-			// fmt.Println(err)
-		}
-	}()
+	// defer func() {
+	// 	if err := recover(); err != nil {
+	// 		// fmt.Println(err)
+	// 	}
+	// }()
 	defer connOnce.Do(func() { conn.Close() })
 
 	pktBuf := make([]byte, 1500)
@@ -222,12 +222,12 @@ func read(conn *net.IPConn) error {
 		n, oobn, _, ra, err := conn.ReadMsgIP(pktBuf, oob)
 
 		if err != nil {
-			if neterr, ok := err.(*net.OpError); ok && neterr.Timeout() {
-				return nil
-			}
-			if strings.Contains(err.Error(), "no message of desired type") {
-				return nil
-			}
+			// if neterr, ok := err.(*net.OpError); ok && neterr.Timeout() {
+			// 	return nil
+			// }
+			// if strings.Contains(err.Error(), "no message of desired type") {
+			// 	return nil
+			// }
 			return err
 		}
 
