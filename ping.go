@@ -410,7 +410,7 @@ func getTsFromOOB(oob []byte, oobn int) (int64, error) {
 func getTxTs(socketFd int) (int64, error) {
 	pktBuf := make([]byte, 1024)
 	oob := make([]byte, 1024)
-	_, oobn, _, _, err := syscall.Recvmsg(socketFd, pktBuf, oob, syscall.MSG_ERRQUEUE)
+	_, oobn, _, _, err := syscall.Recvmsg(socketFd, pktBuf, oob, syscall.MSG_ERRQUEUE|syscall.MSG_DONTWAIT)
 	if err != nil {
 		return 0, err
 	}
