@@ -353,18 +353,22 @@ func printStat() error {
 					lossRate = float64(tr.loss) / float64(total)
 				}
 
+				logLevel := "INFO"
+				if tr.loss > 0 {
+					logLevel = "WARN"
+				}
+
 				if *bitflipCheck {
 					if tr.received == 0 {
-						log.Printf("%s: sent:%d, recv:%d, loss rate: %.2f%%, latency: %v, bitflip: %d\n", target, total, tr.received, lossRate*100, 0, tr.bitflipCount)
+						log.Printf("[%s] %s: sent:%d, recv:%d, loss rate: %.2f%%, latency: %v, bitflip: %d\n", logLevel, target, total, tr.received, lossRate*100, 0, tr.bitflipCount)
 					} else {
-						log.Printf("%s: sent:%d, recv:%d,  loss rate: %.2f%%, latency: %v, bitflip: %d\n", target, total, tr.received, lossRate*100, time.Duration(tr.latency/int64(tr.received)), tr.bitflipCount)
+						log.Printf("[%s] %s: sent:%d, recv:%d,  loss rate: %.2f%%, latency: %v, bitflip: %d\n", logLevel, target, total, tr.received, lossRate*100, time.Duration(tr.latency/int64(tr.received)), tr.bitflipCount)
 					}
 				} else {
-
 					if tr.received == 0 {
-						log.Printf("%s: sent:%d, recv:%d, loss rate: %.2f%%, latency: %v\n", target, total, tr.received, lossRate*100, 0)
+						log.Printf("[%s] %s: sent:%d, recv:%d, loss rate: %.2f%%, latency: %v\n", logLevel, target, total, tr.received, lossRate*100, 0)
 					} else {
-						log.Printf("%s: sent:%d, recv:%d,  loss rate: %.2f%%, latency: %v\n", target, total, tr.received, lossRate*100, time.Duration(tr.latency/int64(tr.received)))
+						log.Printf("[%s] %s: sent:%d, recv:%d,  loss rate: %.2f%%, latency: %v\n", logLevel, target, total, tr.received, lossRate*100, time.Duration(tr.latency/int64(tr.received)))
 					}
 				}
 			}
