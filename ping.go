@@ -249,7 +249,7 @@ func read(conn *net.IPConn) error {
 			continue
 		}
 
-		msg, err := icmp.ParseMessage(1, pktBuf[ipv4.HeaderLen:])
+		msg, err := icmp.ParseMessage(1, pktBuf[ipv4.HeaderLen:n])
 		if err != nil {
 			continue
 		}
