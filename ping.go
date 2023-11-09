@@ -321,6 +321,7 @@ func printStat() error {
 
 			targetResult := make(map[string]*TargetResult)
 
+			pop.Mu.RLock()
 			for _, r := range pop.Value {
 				target := r.target
 
@@ -343,6 +344,7 @@ func printStat() error {
 				}
 
 			}
+			pop.Mu.RUnlock()
 
 			for target, tr := range targetResult {
 				total := tr.received + tr.loss
